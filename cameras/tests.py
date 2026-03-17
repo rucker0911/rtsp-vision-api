@@ -67,21 +67,11 @@ class CameraCreateApiTests(APITestCase):
 
     def test_create_camera_success(self):
         response = self.client.post(self.url, VALID_PAYLOAD, format="json")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
         body = response.json()
         self.assertEqual(body.get("code"), "success")
         self.assertTrue(CameraSource.objects.filter(device_id="CAM001").exists())
-
-    def test_create_camera_duplicate_device_id(self):
-        CameraSource.objects.create(**VALID_PAYLOAD)
-
-        response = self.client.post(self.url, VALID_PAYLOAD, format="json")
-        self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
-
-        body = response.json()
-        self.assertEqual(body.get("code"), "invalidInput")
-        self.assertIn("already exists", body.get("errors", ""))
 
     def test_create_camera_invalid_port(self):
         payload = {**VALID_PAYLOAD, "device_id": "CAM003", "web_port": 99999}
@@ -91,3 +81,35 @@ class CameraCreateApiTests(APITestCase):
         body = response.json()
         self.assertEqual(body.get("code"), "missingParameter")
         self.assertIn("web_port", body.get("errors", {}))
+
+    def test_update_camera_partial(self):
+        CameraSource.objects.create(**VALID_PAYLOAD)
+
+        updated_url = "rtsp://example.com/new-stream"
+        response = self.client.post(
+            self.url,
+            {"device_id": "CAM001", "stream_url": updated_url},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        body = response.json()
+        self.assertEqual(body.get("code"), "success")
+        self.assertEqual(
+            CameraSource.objects.get(device_id="CAM001").stream_url,
+            updated_url,
+        )
+
+    def test_update_camera_invalid_port(self):
+        CameraSource.objects.create(**VALID_PAYLOAD)
+
+        response = self.client.post(
+            self.url,
+            {"device_id": "CAM001", "rtsp_port": 99999},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        body = response.json()
+        self.assertEqual(body.get("code"), "missingParameter")
+        self.assertIn("rtsp_port", body.get("errors", {}))
