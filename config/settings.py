@@ -45,8 +45,20 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
+    'drf_spectacular',
     'cameras',
 ]
+
+REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'RTSP Vision API',
+    'DESCRIPTION': 'RTSP 攝影機設定與串流管理 API',
+    'VERSION': '0.1.0',
+}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
