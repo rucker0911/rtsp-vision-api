@@ -113,3 +113,38 @@ class CameraCreateApiTests(APITestCase):
         body = response.json()
         self.assertEqual(body.get("code"), "missingParameter")
         self.assertIn("rtsp_port", body.get("errors", {}))
+
+
+class CameraDetailApiTests(APITestCase):
+    def setUp(self) -> None:
+        self.camera = CameraSource.objects.create(**VALID_PAYLOAD)
+        self.url = reverse("api-cameras-detail", kwargs={"device_id": "CAM001"})
+        self.not_found_url = reverse("api-cameras-detail", kwargs={"device_id": "NOTEXIST"})
+
+    def test_get_camera_success(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+        body = response.json()
+        self.assertEqual(body.get("code"), "success")
+        item = body.get("data", {})
+        self.assertEqual(item["device_id"], "CAM001")
+        self.assertEqual(item["name"], "Front Door")
+        self.assertNotIn("cctv_user", item)
+        self.assertNotIn("cctv_pass", item)
+
+    def test_get_camera_not_found(self):
+        response = self.client.get(self.not_found_url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.json().get("code"), "notFound")
+
+    def test_delete_camera_success(self):
+        response = self.client.delete(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json().get("code"), "success")
+        self.assertFalse(CameraSource.objects.get(device_id="CAM001").is_enabled)
+
+    def test_delete_camera_not_found(self):
+        response = self.client.delete(self.not_found_url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.json().get("code"), "notFound")

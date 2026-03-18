@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from utils.logManager import LogManager
-from utils.responses import MISSING_PARAMETERS_422, SUCCESS_200, SUCCESS_201, response_with
+from utils.responses import MISSING_PARAMETERS_422, NOT_FOUND_404, SUCCESS_200, SUCCESS_201, response_with
 
 from .models import CameraSource
 from .serializers import CameraCreateSerializer, CameraSourceSerializer
@@ -27,7 +27,7 @@ class CameraListView(APIView):
 
 class CameraCreateView(APIView):
     @extend_schema(
-        summary="新增或更新攝影機靜態資料（Upsert）",
+        summary="新增或更新攝影機靜態資料",
         description=(
             "以 device_id 為識別鍵進行 upsert：\n"
             "- device_id 不存在 → 新增，回傳 201\n"
@@ -57,3 +57,37 @@ class CameraCreateView(APIView):
         serializer.save()
         log.info(f"Camera created: {device_id}")
         return response_with(SUCCESS_201)
+
+
+class CameraDetailView(APIView):
+    def _get_instance(self, device_id: str):
+        return CameraSource.objects.filter(device_id=device_id).first()
+
+    @extend_schema(
+        summary="取得單筆攝影機資料",
+        description="依 device_id 查詢單筆攝影機設定。不包含 cctv_user / cctv_pass。",
+        responses={200: CameraSourceSerializer, 404: None},
+    )
+    def get(self, request: Request, device_id: str) -> Response:
+        instance = self._get_instance(device_id)
+        if not instance:
+            log.warning(f"Camera not found: {device_id}")
+            return response_with(NOT_FOUND_404)
+        serializer = CameraSourceSerializer(instance)
+        log.info(f"Camera fetched: {device_id}")
+        return response_with(SUCCESS_200, value={"data": serializer.data})
+
+    @extend_schema(
+        summary="停用攝影機",
+        description="依 device_id 將攝影機設為停用（is_enabled=False），資料保留不刪除。",
+        responses={200: None, 404: None},
+    )
+    def delete(self, request: Request, device_id: str) -> Response:
+        instance = self._get_instance(device_id)
+        if not instance:
+            log.warning(f"Camera not found for disable: {device_id}")
+            return response_with(NOT_FOUND_404)
+        instance.is_enabled = False
+        instance.save(update_fields=["is_enabled", "updated_at"])
+        log.info(f"Camera disabled: {device_id}")
+        return response_with(SUCCESS_200)
