@@ -1,16 +1,15 @@
-from faulthandler import is_enabled
-import pandas as pd
-from django.db import connection
 from drf_spectacular.utils import extend_schema
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from utils.logManager import LogManager
 from utils.responses import MISSING_PARAMETERS_422, SUCCESS_200, SUCCESS_201, response_with
-from utils.sqlBuild import sql_select
 
 from .models import CameraSource
 from .serializers import CameraCreateSerializer, CameraSourceSerializer
+
+log = LogManager("cameras")
 
 
 class CameraListView(APIView):
@@ -22,6 +21,7 @@ class CameraListView(APIView):
     def get(self, request: Request) -> Response:
         cameras = CameraSource.objects.filter(is_enabled=True).order_by("name")
         serializer = CameraSourceSerializer(cameras, many=True)
+        log.info(f"Camera list fetched, count={len(serializer.data)}")
         return response_with(SUCCESS_200, value={"data": serializer.data})
 
 
@@ -44,12 +44,16 @@ class CameraCreateView(APIView):
         if instance:
             serializer = CameraCreateSerializer(instance, data=request.data, partial=True)
             if not serializer.is_valid():
+                log.warning(f"Camera update validation failed: {serializer.errors}")
                 return response_with(MISSING_PARAMETERS_422, error=serializer.errors)
             serializer.save()
+            log.info(f"Camera updated: {device_id}")
             return response_with(SUCCESS_200)
 
         serializer = CameraCreateSerializer(data=request.data)
         if not serializer.is_valid():
+            log.warning(f"Camera create validation failed: {serializer.errors}")
             return response_with(MISSING_PARAMETERS_422, error=serializer.errors)
         serializer.save()
+        log.info(f"Camera created: {device_id}")
         return response_with(SUCCESS_201)
