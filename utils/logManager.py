@@ -1,6 +1,9 @@
 import logging
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
+
+_TZ = ZoneInfo("Asia/Taipei")
 
 
 class LogManager:
@@ -13,7 +16,7 @@ class LogManager:
             self.logger = LogManager.loggers[title]
             return
 
-        self.current_date = datetime.now().strftime("%Y%m%d")
+        self.current_date = datetime.now(_TZ).strftime("%Y%m%d")
         self.logger = logging.getLogger(title)
         self.logger.setLevel(logging.INFO)
         self.file_handler = None
@@ -35,6 +38,7 @@ class LogManager:
         formatter = logging.Formatter(
             f"%(asctime)s - %(levelname)s - {self.title} - %(message)s"
         )
+        formatter.converter = lambda *args: datetime.now(_TZ).timetuple()
 
         file_handler = logging.FileHandler(log_filename, encoding="utf-8")
         file_handler.setFormatter(formatter)
@@ -45,7 +49,7 @@ class LogManager:
         self.logger.addHandler(stream_handler)
 
     def _check_date(self):
-        new_date = datetime.now().strftime("%Y%m%d")
+        new_date = datetime.now(_TZ).strftime("%Y%m%d")
         if hasattr(self, "current_date") and new_date != self.current_date:
             self.current_date = new_date
             self._update_file_handler()
