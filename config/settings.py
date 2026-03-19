@@ -51,6 +51,7 @@ INSTALLED_APPS = [
     'cameras',
     'auth_api',
     'corsheaders',
+    'django_celery_beat',
 ]
 
 REST_FRAMEWORK = {
@@ -156,6 +157,21 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Celery
+CELERY_BROKER_URL = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@localhost:5672//")
+CELERY_RESULT_BACKEND = "rpc://"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_TIMEZONE = "UTC"
+CELERY_BEAT_SCHEDULER = "django_celery_beat.schedulers:DatabaseScheduler"
+
+CELERY_BEAT_SCHEDULE = {
+    "check-cameras-every-minute": {
+        "task": "cameras.check_all_cameras_status",
+        "schedule": 60.0,
+    },
+}
 
 # CORS
 # 開發環境（DEBUG=True）允許全部來源；正式環境請在 .env 設定 CORS_ALLOWED_ORIGINS

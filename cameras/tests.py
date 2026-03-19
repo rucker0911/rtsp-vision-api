@@ -1,5 +1,8 @@
+from unittest.mock import patch
+
 from django.contrib.auth.models import User
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
@@ -162,3 +165,67 @@ class CameraDetailApiTests(AuthMixin, APITestCase):
         response = self.client.delete(self.not_found_url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertEqual(response.json().get("code"), "notFound")
+
+
+class CameraStatusApiTests(AuthMixin, APITestCase):
+    def setUp(self) -> None:
+        self._set_auth()
+        self.camera = CameraSource.objects.create(
+            **VALID_PAYLOAD,
+            is_online=True,
+            last_checked_at=timezone.now(),
+        )
+        self.url = reverse("api-cameras-status", kwargs={"device_id": "CAM001"})
+        self.not_found_url = reverse("api-cameras-status", kwargs={"device_id": "NOTEXIST"})
+
+    def test_status_online(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        body = response.json()
+        self.assertEqual(body.get("code"), "success")
+        data = body.get("data", {})
+        self.assertEqual(data["device_id"], "CAM001")
+        self.assertTrue(data["is_online"])
+        self.assertIsNotNone(data["last_checked_at"])
+
+    def test_status_offline(self):
+        self.camera.is_online = False
+        self.camera.save(update_fields=["is_online"])
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertFalse(response.json()["data"]["is_online"])
+
+    def test_status_not_found(self):
+        response = self.client.get(self.not_found_url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.json().get("code"), "notFound")
+
+
+class CameraCheckTaskTests(APITestCase):
+    """驗證 check_all_cameras_status task 正確更新 is_online。"""
+
+    def test_task_marks_online(self):
+        CameraSource.objects.create(
+            **{**VALID_PAYLOAD, "stream_url": "rtsp://192.0.2.1/stream"},
+        )
+        from cameras.tasks import check_all_cameras_status
+
+        with patch("cameras.tasks._tcp_check", return_value=True):
+            result = check_all_cameras_status()
+
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["online"], 1)
+        self.assertTrue(CameraSource.objects.get(device_id="CAM001").is_online)
+
+    def test_task_marks_offline(self):
+        CameraSource.objects.create(
+            **{**VALID_PAYLOAD, "stream_url": "rtsp://192.0.2.1/stream"},
+            is_online=True,
+        )
+        from cameras.tasks import check_all_cameras_status
+
+        with patch("cameras.tasks._tcp_check", return_value=False):
+            result = check_all_cameras_status()
+
+        self.assertEqual(result["online"], 0)
+        self.assertFalse(CameraSource.objects.get(device_id="CAM001").is_online)

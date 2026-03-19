@@ -14,6 +14,8 @@ class CameraSource(models.Model):
     cctv_user = models.CharField(max_length=100, help_text="CCTV 登入帳號")
     cctv_pass = models.CharField(default="temp_pass", max_length=100, help_text="CCTV 登入密碼")
     is_enabled = models.BooleanField(default=True, help_text="是否啟用此攝影機")
+    is_online = models.BooleanField(default=False, help_text="最近一次連線檢查是否在線")
+    last_checked_at = models.DateTimeField(null=True, blank=True, help_text="最近一次連線檢查時間")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

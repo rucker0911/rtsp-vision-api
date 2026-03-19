@@ -7,7 +7,7 @@ from utils.logManager import LogManager
 from utils.responses import MISSING_PARAMETERS_422, NOT_FOUND_404, SUCCESS_200, SUCCESS_201, response_with
 
 from .models import CameraSource
-from .serializers import CameraCreateSerializer, CameraSourceSerializer
+from .serializers import CameraCreateSerializer, CameraSourceSerializer, CameraStatusSerializer
 
 log = LogManager("cameras")
 
@@ -57,6 +57,22 @@ class CameraCreateView(APIView):
         serializer.save()
         log.info(f"Camera created: {device_id}")
         return response_with(SUCCESS_201)
+
+
+class CameraStatusView(APIView):
+    @extend_schema(
+        summary="查詢攝影機連線狀態",
+        description="回傳指定攝影機的 is_online 與 last_checked_at，由 Celery Beat 每分鐘更新。",
+        responses={200: CameraStatusSerializer, 404: None},
+    )
+    def get(self, request: Request, device_id: str) -> Response:
+        instance = CameraSource.objects.filter(device_id=device_id).first()
+        if not instance:
+            log.warning(f"Camera status not found: {device_id}")
+            return response_with(NOT_FOUND_404)
+        serializer = CameraStatusSerializer(instance)
+        log.info(f"Camera status fetched: {device_id}, online={instance.is_online}")
+        return response_with(SUCCESS_200, value={"data": serializer.data})
 
 
 class CameraDetailView(APIView):

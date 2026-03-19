@@ -1,6 +1,6 @@
 # rtsp-vision-api
 
-以 Django + DRF 建立的 RTSP 攝影機設定與串流管理 API 專案，提供攝影機設備的完整 CRUD 管理功能。
+以 Django + DRF 建立的 RTSP 攝影機設定與串流管理 API 專案，提供攝影機設備的完整 CRUD 管理，並透過 Celery 定期進行 TCP 連線狀態檢查。
 
 ---
 
@@ -22,7 +22,17 @@
    ```bash
    uv run manage.py runserver
    ```
-5. 開啟 Swagger UI 確認 API 是否正常：
+5. **（Optional）啟動 Celery Worker 與 Beat**（攝影機連線狀態定期檢查）
+   ```bash
+   # Worker — 執行任務
+   uv run celery -A config worker --loglevel=info
+
+   # Beat — 每分鐘觸發排程
+   uv run celery -A config beat --loglevel=info
+   ```
+   > 需要本機或容器有 RabbitMQ 運行，預設連線為 `amqp://guest:guest@localhost:5672//`。
+
+6. 開啟 Swagger UI 確認 API 是否正常：
    ```
    http://127.0.0.1:8000/api/schema/swagger-ui/
    ```
@@ -49,6 +59,12 @@
 | `DB_HOST` | 資料庫位址 | `localhost` |
 | `DB_PORT` | 資料庫連接埠 | `5432` |
 
+### RabbitMQ（Celery Broker）
+
+| 變數 | 說明 | 範例 |
+|------|------|------|
+| `RABBITMQ_URL` | RabbitMQ AMQP 連線字串 | `amqp://guest:guest@localhost:5672//` |
+
 > 正式環境請務必設定 `DJANGO_SECRET_KEY`、正確的 DB 連線資訊，並將 `DJANGO_DEBUG=False`。  
 > 測試環境需確認 DB User 具備 `CREATEDB` 權限，否則 `manage.py test` 會失敗。
 
@@ -56,12 +72,24 @@
 
 ## API 端點
 
+### 認證
+
+| Method | URL | 說明 |
+|--------|-----|------|
+| `POST` | `/api/auth/login/` | 取得 API Token（`username` / `password`） |
+| `POST` | `/api/auth/logout/` | 撤銷目前的 API Token |
+
+> 所有 Camera API 需攜帶 Token，Header 格式：`Authorization: Token <token>`
+
+### 攝影機管理
+
 | Method | URL | 說明 |
 |--------|-----|------|
 | `GET` | `/api/cameras/` | 取得啟用中的攝影機列表 |
-| `POST` | `/api/cameras/create/` | 新增或更新攝影機 |
+| `POST` | `/api/cameras/create/` | 新增或更新攝影機（Upsert） |
 | `GET` | `/api/cameras/{device_id}/` | 取得單筆攝影機資料 |
-| `DELETE` | `/api/cameras/{device_id}/` | 停用攝影機 |
+| `DELETE` | `/api/cameras/{device_id}/` | 停用攝影機（軟刪除） |
+| `GET` | `/api/cameras/{device_id}/status/` | 查詢攝影機連線狀態 |
 
 ### 統一回應格式
 
@@ -84,6 +112,8 @@
 | `cctv_user` | CCTV 登入帳號 | 不會在 API 回傳中曝光 |
 | `cctv_pass` | CCTV 登入密碼 | 不會在 API 回傳中曝光 |
 | `is_enabled` | 是否啟用 | 軟刪除時設為 `false` |
+| `is_online` | 連線狀態 | 由 Celery Beat 每分鐘更新 |
+| `last_checked_at` | 最後連線檢查時間 | 由 Celery Beat 每分鐘更新 |
 | `created_at` / `updated_at` | 建立 / 更新時間 | 自動填入 |
 
 ---
@@ -111,7 +141,11 @@
 ## 測試
 
 ```bash
+# 僅跑 cameras app（含 task mock 測試）
 uv run manage.py test cameras
+
+# 全部 app
+uv run manage.py test
 ```
 
 > 若出現 `permission denied to create database`，請對 DB User 執行：
@@ -125,14 +159,21 @@ uv run manage.py test cameras
 
 ```
 cameras/
-  models.py         → CameraSource 資料表定義
-  serializers.py    → Read / Write Serializer
+  models.py         → CameraSource 資料表定義（含 is_online / last_checked_at）
+  serializers.py    → Read / Write / Status Serializer
   views.py          → APIView（含 LogManager 日誌）
   urls.py           → cameras 路由
-  tests.py          → APITestCase 測試
+  tasks.py          → Celery Task：TCP 連線檢查
+  tests.py          → APITestCase 測試（含 Task mock 測試）
+
+auth_api/
+  views.py          → LoginView / LogoutView（Token 認證）
+  urls.py           → /api/auth/ 路由
 
 config/
-  settings.py       → Django 設定（含 DRF、Swagger 設定）
+  settings.py       → Django 設定（DRF、Swagger、Celery、CORS）
+  celery.py         → Celery app 初始化
+  __init__.py       → 導入 celery_app
   urls.py           → 全域路由
 
 utils/
@@ -152,5 +193,8 @@ utils/
 | Django | 5.2+ |
 | Django REST Framework | 3.16+ |
 | drf-spectacular | Swagger / OpenAPI 文件 |
+| Celery | 非同步任務 / 排程 |
+| django-celery-beat | DB 排程管理 |
+| RabbitMQ | Celery Broker |
 | PostgreSQL | 資料庫 |
 | uv | 套件管理 |

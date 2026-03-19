@@ -20,6 +20,12 @@ class CameraSourceSerializer(serializers.ModelSerializer):
         ]
 
 
+class CameraStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CameraSource
+        fields = ["device_id", "name", "is_online", "last_checked_at"]
+
+
 class CameraCreateSerializer(serializers.ModelSerializer):
     web_port = serializers.IntegerField(min_value=PORT_MIN, max_value=PORT_MAX)
     rtsp_port = serializers.IntegerField(min_value=PORT_MIN, max_value=PORT_MAX)
