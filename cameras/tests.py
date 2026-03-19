@@ -1,5 +1,7 @@
+from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
+from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
 from .models import CameraSource
@@ -15,8 +17,18 @@ VALID_PAYLOAD = {
 }
 
 
-class CameraListApiTests(APITestCase):
+class AuthMixin:
+    """為 APITestCase 子類提供 Token 認證的共用 setUp 邏輯。"""
+
+    def _set_auth(self) -> None:
+        user = User.objects.create_user(username="testuser", password="testpass123")
+        token = Token.objects.create(user=user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+
+
+class CameraListApiTests(AuthMixin, APITestCase):
     def setUp(self) -> None:
+        self._set_auth()
         self.url = reverse("api-cameras-list")
 
     def test_list_cameras_only_enabled_returned(self):
@@ -61,8 +73,9 @@ class CameraListApiTests(APITestCase):
         self.assertNotIn("cctv_pass", item)
 
 
-class CameraCreateApiTests(APITestCase):
+class CameraCreateApiTests(AuthMixin, APITestCase):
     def setUp(self) -> None:
+        self._set_auth()
         self.url = reverse("api-cameras-create")
 
     def test_create_camera_success(self):
@@ -115,8 +128,9 @@ class CameraCreateApiTests(APITestCase):
         self.assertIn("rtsp_port", body.get("errors", {}))
 
 
-class CameraDetailApiTests(APITestCase):
+class CameraDetailApiTests(AuthMixin, APITestCase):
     def setUp(self) -> None:
+        self._set_auth()
         self.camera = CameraSource.objects.create(**VALID_PAYLOAD)
         self.url = reverse("api-cameras-detail", kwargs={"device_id": "CAM001"})
         self.not_found_url = reverse("api-cameras-detail", kwargs={"device_id": "NOTEXIST"})
