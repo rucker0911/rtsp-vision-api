@@ -86,6 +86,9 @@ class CameraCreateView(APIView):
     )
     def post(self, request: Request) -> Response:
         device_id = request.data.get("device_id")
+        if not device_id:
+            return response_with(MISSING_PARAMETERS_422, error={"device_id": ["This field is required."]})
+
         instance = CameraSource.objects.filter(device_id=device_id).first()
 
         if instance:
