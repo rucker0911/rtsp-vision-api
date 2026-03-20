@@ -1,5 +1,3 @@
-import math
-
 from drf_spectacular.utils import extend_schema, OpenApiParameter
 from drf_spectacular.types import OpenApiTypes
 from rest_framework.request import Request
@@ -7,30 +5,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from utils.logManager import LogManager
+from utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate, parse_page_params
 from utils.responses import MISSING_PARAMETERS_422, NOT_FOUND_404, SUCCESS_200, SUCCESS_201, response_with
 
 from .models import CameraSource
 from .serializers import CameraCreateSerializer, CameraSourceSerializer, CameraStatusSerializer
 
 log = LogManager("cameras")
-
-_DEFAULT_PAGE_SIZE = 20
-_MAX_PAGE_SIZE = 100
-
-
-def _paginate(queryset, page: int, page_size: int) -> tuple:
-    """回傳 (items, pagination_dict)。"""
-    total = queryset.count()
-    total_pages = max(math.ceil(total / page_size), 1)
-    page = max(1, min(page, total_pages))
-    offset = (page - 1) * page_size
-    items = queryset[offset: offset + page_size]
-    return items, {
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-        "total_pages": total_pages,
-    }
 
 
 class CameraListView(APIView):
@@ -43,7 +24,7 @@ class CameraListView(APIView):
         ),
         parameters=[
             OpenApiParameter("page", OpenApiTypes.INT, description="頁碼（預設 1）"),
-            OpenApiParameter("page_size", OpenApiTypes.INT, description=f"每頁筆數（預設 {_DEFAULT_PAGE_SIZE}，最大 {_MAX_PAGE_SIZE}）"),
+            OpenApiParameter("page_size", OpenApiTypes.INT, description=f"每頁筆數（預設 {DEFAULT_PAGE_SIZE}，最大 {MAX_PAGE_SIZE}）"),
             OpenApiParameter("name", OpenApiTypes.STR, description="名稱模糊搜尋"),
             OpenApiParameter("is_online", OpenApiTypes.BOOL, description="篩選連線狀態（true / false）"),
         ],
@@ -60,13 +41,8 @@ class CameraListView(APIView):
         if is_online is not None:
             qs = qs.filter(is_online=is_online.lower() == "true")
 
-        try:
-            page = int(request.query_params.get("page", 1))
-            page_size = min(int(request.query_params.get("page_size", _DEFAULT_PAGE_SIZE)), _MAX_PAGE_SIZE)
-        except ValueError:
-            page, page_size = 1, _DEFAULT_PAGE_SIZE
-
-        items, pagination = _paginate(qs, page, page_size)
+        page, page_size = parse_page_params(request.query_params)
+        items, pagination = paginate(qs, page, page_size)
         serializer = CameraSourceSerializer(items, many=True)
         log.info(f"Camera list fetched, count={pagination['total']}, page={page}")
         return response_with(SUCCESS_200, value={"data": serializer.data}, pagination=pagination)
