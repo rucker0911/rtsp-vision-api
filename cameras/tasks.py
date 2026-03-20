@@ -1,4 +1,5 @@
 import socket
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from celery import shared_task
 from django.utils import timezone
 
@@ -7,6 +8,7 @@ from utils.logManager import LogManager
 log = LogManager("cameras.tasks")
 
 _TCP_TIMEOUT = 3
+_MAX_WORKERS = 20
 
 
 def _tcp_check(host: str, port: int) -> bool:
@@ -47,29 +49,34 @@ def check_all_cameras_status() -> dict:
     """
     from cameras.models import CameraSource  # 避免 circular import
 
-    cameras = CameraSource.objects.filter(is_enabled=True).only(
-        "id", "device_id", "stream_url", "rtsp_port", "is_online"
+    cameras = list(
+        CameraSource.objects.filter(is_enabled=True).only(
+            "id", "device_id", "stream_url", "rtsp_port", "is_online"
+        )
     )
 
     now = timezone.now()
-    updated, online_count = 0, 0
+    online_count = 0
 
-    for cam in cameras:
+    def _check(cam):
         host, port = _parse_host_port(cam.stream_url, cam.rtsp_port)
-        online = _tcp_check(host, port)
+        return cam, _tcp_check(host, port)
 
-        if online != cam.is_online:
-            log.info(
-                f"Camera status changed: {cam.device_id} "
-                f"{'offline→online' if online else 'online→offline'}"
-            )
+    with ThreadPoolExecutor(max_workers=min(_MAX_WORKERS, len(cameras) or 1)) as executor:
+        futures = {executor.submit(_check, cam): cam for cam in cameras}
+        for future in as_completed(futures):
+            cam, online = future.result()
+            if online != cam.is_online:
+                log.info(
+                    f"Camera status changed: {cam.device_id} "
+                    f"{'offline→online' if online else 'online→offline'}"
+                )
+            cam.is_online = online
+            cam.last_checked_at = now
+            if online:
+                online_count += 1
 
-        cam.is_online = online
-        cam.last_checked_at = now
-        if online:
-            online_count += 1
-        updated += 1
-
+    updated = len(cameras)
     CameraSource.objects.bulk_update(cameras, ["is_online", "last_checked_at"])
     log.info(f"Camera status check done: total={updated}, online={online_count}")
     return {"total": updated, "online": online_count}
