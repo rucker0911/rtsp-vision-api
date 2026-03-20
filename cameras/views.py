@@ -1,4 +1,7 @@
-from drf_spectacular.utils import extend_schema
+import math
+
+from drf_spectacular.utils import extend_schema, OpenApiParameter
+from drf_spectacular.types import OpenApiTypes
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -11,18 +14,62 @@ from .serializers import CameraCreateSerializer, CameraSourceSerializer, CameraS
 
 log = LogManager("cameras")
 
+_DEFAULT_PAGE_SIZE = 20
+_MAX_PAGE_SIZE = 100
+
+
+def _paginate(queryset, page: int, page_size: int) -> tuple:
+    """回傳 (items, pagination_dict)。"""
+    total = queryset.count()
+    total_pages = max(math.ceil(total / page_size), 1)
+    page = max(1, min(page, total_pages))
+    offset = (page - 1) * page_size
+    items = queryset[offset: offset + page_size]
+    return items, {
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": total_pages,
+    }
+
 
 class CameraListView(APIView):
     @extend_schema(
         summary="取得啟用中的攝影機列表",
-        description="回傳所有 is_enabled=True 的攝影機，依名稱排序。不包含 cctv_user / cctv_pass。",
+        description=(
+            "回傳所有 is_enabled=True 的攝影機，依名稱排序。\n"
+            "支援分頁（page / page_size）與篩選（name / is_online）。\n"
+            "不包含 cctv_user / cctv_pass。"
+        ),
+        parameters=[
+            OpenApiParameter("page", OpenApiTypes.INT, description="頁碼（預設 1）"),
+            OpenApiParameter("page_size", OpenApiTypes.INT, description=f"每頁筆數（預設 {_DEFAULT_PAGE_SIZE}，最大 {_MAX_PAGE_SIZE}）"),
+            OpenApiParameter("name", OpenApiTypes.STR, description="名稱模糊搜尋"),
+            OpenApiParameter("is_online", OpenApiTypes.BOOL, description="篩選連線狀態（true / false）"),
+        ],
         responses=CameraSourceSerializer(many=True),
     )
     def get(self, request: Request) -> Response:
-        cameras = CameraSource.objects.filter(is_enabled=True).order_by("name")
-        serializer = CameraSourceSerializer(cameras, many=True)
-        log.info(f"Camera list fetched, count={len(serializer.data)}")
-        return response_with(SUCCESS_200, value={"data": serializer.data})
+        qs = CameraSource.objects.filter(is_enabled=True).order_by("name")
+
+        name = request.query_params.get("name")
+        if name:
+            qs = qs.filter(name__icontains=name)
+
+        is_online = request.query_params.get("is_online")
+        if is_online is not None:
+            qs = qs.filter(is_online=is_online.lower() == "true")
+
+        try:
+            page = int(request.query_params.get("page", 1))
+            page_size = min(int(request.query_params.get("page_size", _DEFAULT_PAGE_SIZE)), _MAX_PAGE_SIZE)
+        except ValueError:
+            page, page_size = 1, _DEFAULT_PAGE_SIZE
+
+        items, pagination = _paginate(qs, page, page_size)
+        serializer = CameraSourceSerializer(items, many=True)
+        log.info(f"Camera list fetched, count={pagination['total']}, page={page}")
+        return response_with(SUCCESS_200, value={"data": serializer.data}, pagination=pagination)
 
 
 class CameraCreateView(APIView):

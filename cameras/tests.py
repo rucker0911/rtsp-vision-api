@@ -75,6 +75,64 @@ class CameraListApiTests(AuthMixin, APITestCase):
         self.assertNotIn("cctv_user", item)
         self.assertNotIn("cctv_pass", item)
 
+    def _bulk_create(self, count: int):
+        CameraSource.objects.bulk_create([
+            CameraSource(
+                device_id=f"CAM{i:03d}",
+                name=f"Camera {i:03d}",
+                stream_url=f"rtsp://example.com/stream{i}",
+                web_port=8080 + i,
+                rtsp_port=554,
+                cctv_user="user",
+                cctv_pass="pass",
+                is_enabled=True,
+                is_online=(i % 2 == 0),
+            )
+            for i in range(1, count + 1)
+        ])
+
+    def test_pagination_returns_correct_page(self):
+        self._bulk_create(25)
+        response = self.client.get(self.url, {"page": 2, "page_size": 10})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        body = response.json()
+        self.assertEqual(len(body["data"]), 10)
+        pagination = body["pagination"]
+        self.assertEqual(pagination["page"], 2)
+        self.assertEqual(pagination["total"], 25)
+        self.assertEqual(pagination["total_pages"], 3)
+
+    def test_filter_by_name(self):
+        self._bulk_create(5)
+        CameraSource.objects.create(
+            device_id="SPECIAL",
+            name="Lobby Entrance",
+            stream_url="rtsp://example.com/lobby",
+            web_port=9090,
+            rtsp_port=554,
+            cctv_user="u",
+            cctv_pass="p",
+            is_enabled=True,
+        )
+        response = self.client.get(self.url, {"name": "lobby"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        body = response.json()
+        self.assertEqual(len(body["data"]), 1)
+        self.assertEqual(body["data"][0]["device_id"], "SPECIAL")
+
+    def test_filter_by_is_online(self):
+        self._bulk_create(6)
+        response = self.client.get(self.url, {"is_online": "true"})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        body = response.json()
+        self.assertTrue(all(item["is_online"] for item in body["data"]))
+
+    def test_page_size_capped_at_max(self):
+        self._bulk_create(10)
+        response = self.client.get(self.url, {"page_size": 9999})
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertLessEqual(response.json()["pagination"]["page_size"], 100)
+
 
 class CameraCreateApiTests(AuthMixin, APITestCase):
     def setUp(self) -> None:

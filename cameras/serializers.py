@@ -17,6 +17,8 @@ class CameraSourceSerializer(serializers.ModelSerializer):
             "web_port",
             "rtsp_port",
             "is_enabled",
+            "is_online",
+            "last_checked_at",
         ]
 
 
