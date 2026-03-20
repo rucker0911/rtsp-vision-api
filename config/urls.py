@@ -4,6 +4,7 @@ from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView, Spec
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    path("health/", include("health.urls")),
     path("api/auth/", include("auth_api.urls")),
     path("api/cameras/", include("cameras.urls")),
     path("api/schema/", SpectacularAPIView.as_view(), name="schema"),
