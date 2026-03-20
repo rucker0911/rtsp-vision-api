@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from utils.logManager import LogManager
+from utils.throttles import LoginRateThrottle
 from utils.responses import (
     MISSING_PARAMETERS_422,
     SUCCESS_200,
@@ -19,6 +20,7 @@ log = LogManager("auth_api")
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [LoginRateThrottle]
 
     @extend_schema(
         summary="登入取得 Token",

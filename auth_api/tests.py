@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth.models import User
 from django.urls import reverse
 from rest_framework import status
@@ -57,3 +59,16 @@ class AuthApiTests(APITestCase):
 
         response = self.client.get(reverse("api-cameras-list"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_login_throttle_returns_429(self):
+        """超過限流次數後應回傳 429。"""
+        payload = {"username": "testuser", "password": "wrongpass"}
+
+        with patch("utils.throttles.LoginRateThrottle.allow_request", return_value=False):
+            with patch("utils.throttles.LoginRateThrottle.wait", return_value=30.0):
+                response = self.client.post(self.login_url, payload, format="json")
+
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        body = response.json()
+        self.assertEqual(body.get("code"), "throttled")
+        self.assertIn("message", body)

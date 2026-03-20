@@ -48,6 +48,12 @@ UNAUTHORIZED_401 = {
     "message": "Invalid authentication.",
 }
 
+THROTTLED_429 = {
+    "http_code": 429,
+    "code": "throttled",
+    "message": "Too many requests. Please try again later.",
+}
+
 SUCCESS_200 = {
     "http_code": 200,
     "code": "success",

@@ -11,6 +11,7 @@ from utils.responses import (
     INVALID_INPUT_422,
     NOT_FOUND_404,
     SERVER_ERROR_500,
+    THROTTLED_429,
     UNAUTHORIZED_401,
     response_with,
 )
@@ -39,6 +40,14 @@ def custom_exception_handler(exc, context) -> Response:
 def _handle_drf_exception(exc, response: Response) -> Response:
     if isinstance(exc, exceptions.ValidationError):
         return response_with(INVALID_INPUT_422, error=response.data)
+
+    if isinstance(exc, exceptions.Throttled):
+        wait = int(exc.wait) + 1 if exc.wait else None
+        msg = f"Too many requests. Please try again in {wait} seconds." if wait else THROTTLED_429["message"]
+        return Response(
+            {"code": THROTTLED_429["code"], "message": msg},
+            status=THROTTLED_429["http_code"],
+        )
 
     mapped = _DRF_STATUS_MAP.get(response.status_code)
     if mapped:
