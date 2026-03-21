@@ -85,18 +85,35 @@
 
 | Method | URL | 說明 |
 |--------|-----|------|
-| `GET` | `/api/cameras/` | 取得啟用中的攝影機列表 |
+| `GET` | `/api/cameras/` | 取得啟用中的攝影機列表（支援分頁與篩選） |
 | `POST` | `/api/cameras/create/` | 新增或更新攝影機（Upsert） |
 | `GET` | `/api/cameras/{device_id}/` | 取得單筆攝影機資料 |
 | `DELETE` | `/api/cameras/{device_id}/` | 停用攝影機（軟刪除） |
 | `GET` | `/api/cameras/{device_id}/status/` | 查詢攝影機連線狀態 |
 
+**`GET /api/cameras/` Query Params**
+
+| 參數 | 型別 | 說明 | 預設 |
+|------|------|------|------|
+| `page` | int | 頁碼 | `1` |
+| `page_size` | int | 每頁筆數（最大 100） | `20` |
+| `name` | string | 名稱模糊搜尋 | — |
+| `is_online` | bool | 篩選連線狀態（`true` / `false`） | — |
+
+### 系統
+
+| Method | URL | 說明 | 需要 Token |
+|--------|-----|------|-----------|
+| `GET` | `/health/` | 查詢服務健康狀態（DB / Broker） | 否 |
+
 ### 統一回應格式
 
 ```json
 { "code": "success", "data": { ... } }
+{ "code": "success", "pagination": { "total": 50, "page": 1, "page_size": 20, "total_pages": 3 }, "data": [ ... ] }
 { "code": "missingParameter", "message": "Missing parameters.", "errors": { ... } }
 { "code": "notFound", "message": "data not found" }
+{ "code": "throttled", "message": "Too many requests. Please try again in 30 seconds." }
 { "code": "serverError", "message": "Server error" }
 ```
 
@@ -176,9 +193,15 @@ config/
   __init__.py       → 導入 celery_app
   urls.py           → 全域路由
 
+health/
+  views.py          → HealthView（DB + Broker 狀態檢查）
+  urls.py           → /health/ 路由
+
 utils/
   responses.py      → 回應常數與 response_with()
   exceptions.py     → 全域例外處理（custom_exception_handler）
+  pagination.py     → 分頁工具（paginate / parse_page_params）
+  throttles.py      → LoginRateThrottle（登入限流）
   logManager.py     → 日誌管理（每日換檔，寫入 ./logs/）
   sqlBuild.py       → 原生 SQL 組裝工具（參數化查詢，防 Injection）
 ```
