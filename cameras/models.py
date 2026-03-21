@@ -7,7 +7,7 @@ class CameraSource(models.Model):
     """
 
     device_id = models.CharField(max_length=100, unique=True, help_text="設備編號")
-    name = models.CharField(max_length=100, help_text="攝影機顯示名稱")
+    name = models.CharField(max_length=100, db_index=True, help_text="攝影機顯示名稱")
     stream_url = models.CharField(max_length=500, help_text="串流 URL（例如 RTSP）")
     web_port = models.IntegerField(help_text="Web 存取埠號")
     rtsp_port = models.IntegerField(help_text="RTSP 埠號")
