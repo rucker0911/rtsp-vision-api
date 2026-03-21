@@ -147,6 +147,14 @@ class CameraCreateApiTests(AuthMixin, APITestCase):
         self.assertEqual(body.get("code"), "success")
         self.assertTrue(CameraSource.objects.filter(device_id="CAM001").exists())
 
+    def test_create_camera_missing_device_id(self):
+        payload = {k: v for k, v in VALID_PAYLOAD.items() if k != "device_id"}
+        response = self.client.post(self.url, payload, format="json")
+        self.assertEqual(response.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
+        body = response.json()
+        self.assertEqual(body.get("code"), "missingParameter")
+        self.assertIn("device_id", body.get("errors", {}))
+
     def test_create_camera_invalid_port(self):
         payload = {**VALID_PAYLOAD, "device_id": "CAM003", "web_port": 99999}
         response = self.client.post(self.url, payload, format="json")
