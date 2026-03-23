@@ -26,3 +26,30 @@ class CameraSource(models.Model):
 
     def __str__(self) -> str:
         return f"{self.device_id} - {self.name}"
+
+
+class CameraStatusLog(models.Model):
+    """
+    記錄攝影機連線狀態變化事件，僅在 is_online 改變時寫入。
+    """
+
+    camera = models.ForeignKey(
+        CameraSource,
+        on_delete=models.CASCADE,
+        related_name="status_logs",
+        help_text="所屬攝影機",
+    )
+    is_online = models.BooleanField(help_text="變化後的連線狀態")
+    changed_at = models.DateTimeField(help_text="狀態變化時間")
+
+    class Meta:
+        verbose_name = "Camera Status Log"
+        verbose_name_plural = "Camera Status Logs"
+        ordering = ["-changed_at"]
+        indexes = [
+            models.Index(fields=["camera", "-changed_at"]),
+        ]
+
+    def __str__(self) -> str:
+        state = "online" if self.is_online else "offline"
+        return f"{self.camera.device_id} → {state} at {self.changed_at}"

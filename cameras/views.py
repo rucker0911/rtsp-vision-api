@@ -8,8 +8,8 @@ from utils.logManager import LogManager
 from utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate, parse_page_params
 from utils.responses import MISSING_PARAMETERS_422, NOT_FOUND_404, SUCCESS_200, SUCCESS_201, response_with
 
-from .models import CameraSource
-from .serializers import CameraCreateSerializer, CameraSourceSerializer, CameraStatusSerializer
+from .models import CameraSource, CameraStatusLog
+from .serializers import CameraCreateSerializer, CameraSourceSerializer, CameraStatusLogSerializer, CameraStatusSerializer
 
 log = LogManager("cameras")
 
@@ -99,6 +99,52 @@ class CameraStatusView(APIView):
         serializer = CameraStatusSerializer(instance)
         log.info(f"Camera status fetched: {device_id}, online={instance.is_online}")
         return response_with(SUCCESS_200, value={"data": serializer.data})
+
+
+class CameraHistoryView(APIView):
+    @extend_schema(
+        summary="查詢攝影機連線狀態歷史",
+        description=(
+            "回傳指定攝影機的連線狀態變化事件（僅記錄狀態改變的時間點）。\n"
+            "支援時間範圍篩選（from_date / to_date，格式 YYYY-MM-DD）與分頁。"
+        ),
+        parameters=[
+            OpenApiParameter("from_date", OpenApiTypes.DATE, description="開始日期（含）"),
+            OpenApiParameter("to_date", OpenApiTypes.DATE, description="結束日期（含）"),
+            OpenApiParameter("page", OpenApiTypes.INT, description="頁碼（預設 1）"),
+            OpenApiParameter("page_size", OpenApiTypes.INT, description=f"每頁筆數（預設 {DEFAULT_PAGE_SIZE}，最大 {MAX_PAGE_SIZE}）"),
+        ],
+        responses={200: CameraStatusLogSerializer(many=True), 404: None},
+    )
+    def get(self, request: Request, device_id: str) -> Response:
+        camera = CameraSource.objects.filter(device_id=device_id).first()
+        if not camera:
+            log.warning(f"Camera history not found: {device_id}")
+            return response_with(NOT_FOUND_404)
+
+        qs = CameraStatusLog.objects.filter(camera=camera)
+
+        from_date = request.query_params.get("from_date")
+        to_date = request.query_params.get("to_date")
+        if from_date:
+            qs = qs.filter(changed_at__date__gte=from_date)
+        if to_date:
+            qs = qs.filter(changed_at__date__lte=to_date)
+
+        page, page_size = parse_page_params(request.query_params)
+        items, pagination = paginate(qs, page, page_size)
+        serializer = CameraStatusLogSerializer(items, many=True)
+
+        online_count = qs.filter(is_online=True).count()
+        total_events = pagination["total"]
+        uptime_rate = round(online_count / total_events * 100, 1) if total_events else None
+
+        log.info(f"Camera history fetched: {device_id}, events={total_events}")
+        return response_with(
+            SUCCESS_200,
+            value={"data": serializer.data, "uptime_rate": uptime_rate},
+            pagination=pagination,
+        )
 
 
 class CameraDetailView(APIView):

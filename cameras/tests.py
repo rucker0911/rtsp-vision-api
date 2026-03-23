@@ -7,7 +7,7 @@ from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
-from .models import CameraSource
+from .models import CameraSource, CameraStatusLog
 
 VALID_PAYLOAD = {
     "device_id": "CAM001",
@@ -295,3 +295,77 @@ class CameraCheckTaskTests(APITestCase):
 
         self.assertEqual(result["online"], 0)
         self.assertFalse(CameraSource.objects.get(device_id="CAM001").is_online)
+
+    def test_task_writes_status_log_on_change(self):
+        CameraSource.objects.create(
+            **{**VALID_PAYLOAD, "stream_url": "rtsp://192.0.2.1/stream"},
+            is_online=False,
+        )
+        from cameras.tasks import check_all_cameras_status
+
+        with patch("cameras.tasks._tcp_check", return_value=True):
+            check_all_cameras_status()
+
+        self.assertEqual(CameraStatusLog.objects.count(), 1)
+        log_entry = CameraStatusLog.objects.first()
+        self.assertTrue(log_entry.is_online)
+
+    def test_task_no_log_when_status_unchanged(self):
+        CameraSource.objects.create(
+            **{**VALID_PAYLOAD, "stream_url": "rtsp://192.0.2.1/stream"},
+            is_online=True,
+        )
+        from cameras.tasks import check_all_cameras_status
+
+        with patch("cameras.tasks._tcp_check", return_value=True):
+            check_all_cameras_status()
+
+        self.assertEqual(CameraStatusLog.objects.count(), 0)
+
+
+class CameraHistoryApiTests(AuthMixin, APITestCase):
+    def setUp(self) -> None:
+        self._set_auth()
+        self.camera = CameraSource.objects.create(**VALID_PAYLOAD)
+        self.url = reverse("api-cameras-history", kwargs={"device_id": "CAM001"})
+        self.not_found_url = reverse("api-cameras-history", kwargs={"device_id": "NOTEXIST"})
+
+    def _create_logs(self, count: int):
+        now = timezone.now()
+        CameraStatusLog.objects.bulk_create([
+            CameraStatusLog(
+                camera=self.camera,
+                is_online=(i % 2 == 0),
+                changed_at=now,
+            )
+            for i in range(count)
+        ])
+
+    def test_history_empty(self):
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        body = response.json()
+        self.assertEqual(body["pagination"]["total"], 0)
+        self.assertEqual(body["data"], [])
+
+    def test_history_returns_logs(self):
+        self._create_logs(5)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        body = response.json()
+        self.assertEqual(body["pagination"]["total"], 5)
+        self.assertEqual(len(body["data"]), 5)
+        self.assertIn("is_online", body["data"][0])
+        self.assertIn("changed_at", body["data"][0])
+
+    def test_history_not_found(self):
+        response = self.client.get(self.not_found_url)
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(response.json().get("code"), "notFound")
+
+    def test_history_uptime_rate(self):
+        self._create_logs(4)
+        response = self.client.get(self.url)
+        body = response.json()
+        self.assertIn("uptime_rate", body)
+        self.assertIsNotNone(body["uptime_rate"])

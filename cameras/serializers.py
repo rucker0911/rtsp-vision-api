@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import CameraSource
+from .models import CameraSource, CameraStatusLog
 
 PORT_MIN = 1
 PORT_MAX = 65535
@@ -26,6 +26,12 @@ class CameraStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = CameraSource
         fields = ["device_id", "name", "is_online", "last_checked_at"]
+
+
+class CameraStatusLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CameraStatusLog
+        fields = ["id", "is_online", "changed_at"]
 
 
 class CameraCreateSerializer(serializers.ModelSerializer):

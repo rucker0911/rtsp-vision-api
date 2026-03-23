@@ -47,7 +47,7 @@ def check_all_cameras_status() -> dict:
     每分鐘掃描所有啟用中的攝影機，對 stream_url 的 host+port 做 TCP 連線測試，
     並將結果寫回 is_online / last_checked_at。
     """
-    from cameras.models import CameraSource  # 避免 circular import
+    from cameras.models import CameraSource, CameraStatusLog  # 避免 circular import
 
     cameras = list(
         CameraSource.objects.filter(is_enabled=True).only(
@@ -57,6 +57,7 @@ def check_all_cameras_status() -> dict:
 
     now = timezone.now()
     online_count = 0
+    status_logs = []
 
     def _check(cam):
         host, port = _parse_host_port(cam.stream_url, cam.rtsp_port)
@@ -71,6 +72,9 @@ def check_all_cameras_status() -> dict:
                     f"Camera status changed: {cam.device_id} "
                     f"{'offline→online' if online else 'online→offline'}"
                 )
+                status_logs.append(
+                    CameraStatusLog(camera_id=cam.id, is_online=online, changed_at=now)
+                )
             cam.is_online = online
             cam.last_checked_at = now
             if online:
@@ -78,5 +82,7 @@ def check_all_cameras_status() -> dict:
 
     updated = len(cameras)
     CameraSource.objects.bulk_update(cameras, ["is_online", "last_checked_at"])
+    if status_logs:
+        CameraStatusLog.objects.bulk_create(status_logs)
     log.info(f"Camera status check done: total={updated}, online={online_count}")
     return {"total": updated, "online": online_count}
