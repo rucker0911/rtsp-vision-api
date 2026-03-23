@@ -52,4 +52,6 @@ class CameraCreateSerializer(serializers.ModelSerializer):
         ]
         extra_kwargs = {
             "is_enabled": {"default": True},
+            "cctv_user": {"default": ""},
+            "cctv_pass": {"default": ""},
         }
