@@ -1,7 +1,9 @@
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.contrib.auth.models import User
 from django.urls import reverse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
@@ -57,6 +59,37 @@ class AuthApiTests(APITestCase):
         token = Token.objects.create(user=self.user)
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
 
+        response = self.client.get(reverse("api-cameras-list"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_login_renews_token(self):
+        """每次登入都應產生新 Token，舊 Token 失效。"""
+        old_token = Token.objects.create(user=self.user)
+        response = self.client.post(
+            self.login_url,
+            {"username": "testuser", "password": "testpass123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        new_token_key = response.json()["token"]
+        self.assertNotEqual(old_token.key, new_token_key)
+        self.assertFalse(Token.objects.filter(key=old_token.key).exists())
+
+    def test_expired_token_returns_401(self):
+        """過期 Token 應回傳 401。"""
+        token = Token.objects.create(user=self.user)
+        expired_time = timezone.now() - timedelta(hours=25)
+        Token.objects.filter(pk=token.pk).update(created=expired_time)
+
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
+        response = self.client.get(reverse("api-cameras-list"))
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertFalse(Token.objects.filter(key=token.key).exists())
+
+    def test_valid_token_still_works(self):
+        """未過期 Token 應正常通過驗證。"""
+        token = Token.objects.create(user=self.user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
         response = self.client.get(reverse("api-cameras-list"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 

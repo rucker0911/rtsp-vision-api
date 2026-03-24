@@ -57,7 +57,8 @@ class LoginView(APIView):
             log.warning(f"Login failed for user: {username}")
             return response_with(UNAUTHORIZED_401)
 
-        token, _ = Token.objects.get_or_create(user=user)
+        Token.objects.filter(user=user).delete()
+        token = Token.objects.create(user=user)
         log.info(f"Login success: {username}")
         return response_with(SUCCESS_200, value={"token": token.key})
 
