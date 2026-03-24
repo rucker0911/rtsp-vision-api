@@ -20,20 +20,30 @@ def _tcp_check(host: str, port: int) -> bool:
         return False
 
 
-def _parse_host_port(stream_url: str, rtsp_port: int) -> tuple[str, int]:
+def _parse_host_port(stream_url: str, rtsp_port: int) -> tuple[str, int] | None:
     """
     從 stream_url 解析 host；若 URL 包含 port 則優先使用，
     否則 fallback 至 model 的 rtsp_port。
+    回傳 None 表示 URL 無效（空字串或解析不出 host）。
     """
-    url = stream_url
+    if not stream_url or not stream_url.strip():
+        return None
+
+    url = stream_url.strip()
     for scheme in ("rtsp://", "http://", "https://"):
         if url.lower().startswith(scheme):
             url = url[len(scheme):]
             break
 
-    host_part = url.split("/")[0]
+    host_part = url.split("/")[0].strip()
+    if not host_part:
+        return None
+
     if ":" in host_part:
         host, port_str = host_part.rsplit(":", 1)
+        host = host.strip()
+        if not host:
+            return None
         try:
             return host, int(port_str)
         except ValueError:
@@ -60,7 +70,11 @@ def check_all_cameras_status() -> dict:
     status_logs = []
 
     def _check(cam):
-        host, port = _parse_host_port(cam.stream_url, cam.rtsp_port)
+        result = _parse_host_port(cam.stream_url, cam.rtsp_port)
+        if result is None:
+            log.warning(f"Invalid stream_url for camera: {cam.device_id} ({cam.stream_url!r})")
+            return cam, False
+        host, port = result
         return cam, _tcp_check(host, port)
 
     with ThreadPoolExecutor(max_workers=min(_MAX_WORKERS, len(cameras) or 1)) as executor:
