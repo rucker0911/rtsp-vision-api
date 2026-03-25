@@ -1,3 +1,4 @@
+import os
 import socket
 
 from django.db import connection, OperationalError
@@ -6,8 +7,6 @@ from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
-from config.settings import CELERY_BROKER_URL
 
 
 def _check_db() -> str:
@@ -21,9 +20,9 @@ def _check_db() -> str:
 
 
 def _check_broker() -> str:
-    """從 CELERY_BROKER_URL 解析 host:port 並做 TCP 握手。"""
+    """從 RABBITMQ_URL 解析 host:port 並做 TCP 連線測試"""
     try:
-        url = CELERY_BROKER_URL
+        url = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@localhost:5672//")
         # amqp://user:pass@host:port/vhost
         host_part = url.split("@")[-1].split("/")[0]
         if ":" in host_part:

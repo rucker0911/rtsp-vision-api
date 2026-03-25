@@ -1,6 +1,9 @@
 import socket
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import timedelta
+
 from celery import shared_task
+from django.conf import settings
 from django.utils import timezone
 
 from utils.logManager import LogManager
