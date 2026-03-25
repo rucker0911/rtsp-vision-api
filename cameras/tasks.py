@@ -103,3 +103,17 @@ def check_all_cameras_status() -> dict:
         CameraStatusLog.objects.bulk_create(status_logs)
     log.info(f"Camera status check done: total={updated}, online={online_count}")
     return {"total": updated, "online": online_count}
+
+
+@shared_task(name="cameras.cleanup_status_logs")
+def cleanup_status_logs() -> dict:
+    """
+    定期清理過期的 CameraStatusLog，保留天數由 STATUS_LOG_RETENTION_DAYS 控制。
+    """
+    from cameras.models import CameraStatusLog  # 避免 circular import
+
+    retention_days = getattr(settings, "STATUS_LOG_RETENTION_DAYS", 90)
+    cutoff = timezone.now() - timedelta(days=retention_days)
+    deleted, _ = CameraStatusLog.objects.filter(changed_at__lt=cutoff).delete()
+    log.info(f"StatusLog cleanup done: deleted={deleted}, retention={retention_days}d")
+    return {"deleted": deleted}

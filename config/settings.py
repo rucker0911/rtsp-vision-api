@@ -166,6 +166,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Token 認證
 TOKEN_EXPIRY_HOURS = int(os.environ.get("TOKEN_EXPIRY_HOURS", "24"))
 
+# StatusLog 保留天數
+STATUS_LOG_RETENTION_DAYS = int(os.environ.get("STATUS_LOG_RETENTION_DAYS", "90"))
+
 # Celery
 CELERY_BROKER_URL = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@localhost:5672//")
 CELERY_RESULT_BACKEND = "rpc://"
@@ -178,6 +181,10 @@ CELERY_BEAT_SCHEDULE = {
     "check-cameras-every-minute": {
         "task": "cameras.check_all_cameras_status",
         "schedule": 60.0,
+    },
+    "cleanup-status-logs-weekly": {
+        "task": "cameras.cleanup_status_logs",
+        "schedule": 60 * 60 * 24 * 7,  # 每週執行一次
     },
 }
 
