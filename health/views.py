@@ -2,7 +2,8 @@ import os
 import socket
 
 from django.db import connection, OperationalError
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, OpenApiExample
+from rest_framework import serializers, status
 from rest_framework.permissions import AllowAny
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -36,9 +37,36 @@ def _check_broker() -> str:
         return "error"
 
 
+class _HealthResponseSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=["ok", "degraded"])
+    db = serializers.ChoiceField(choices=["ok", "error"])
+    broker = serializers.ChoiceField(choices=["ok", "error"])
+
+
+_EXAMPLE_HEALTH_OK = OpenApiExample(
+    "全部正常",
+    value={"status": "ok", "db": "ok", "broker": "ok"},
+    response_only=True,
+    status_codes=["200"],
+)
+
+_EXAMPLE_HEALTH_DEGRADED = OpenApiExample(
+    "部分服務異常",
+    value={"status": "degraded", "db": "ok", "broker": "error"},
+    response_only=True,
+    status_codes=["503"],
+)
+
+
 class HealthView(APIView):
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary="服務健康檢查",
+        description="檢查 PostgreSQL 與 RabbitMQ 連線狀態。全部正常回傳 200，任一異常回傳 503。",
+        responses={200: _HealthResponseSerializer, 503: _HealthResponseSerializer},
+        examples=[_EXAMPLE_HEALTH_OK, _EXAMPLE_HEALTH_DEGRADED],
+    )
     def get(self, request: Request) -> Response:
         db = _check_db()
         broker = _check_broker()

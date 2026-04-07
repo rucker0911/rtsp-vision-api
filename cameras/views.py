@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from utils.logManager import LogManager
 from utils.pagination import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE, paginate, parse_page_params
 from utils.responses import MISSING_PARAMETERS_422, NOT_FOUND_404, SUCCESS_200, SUCCESS_201, response_with
+from utils.schema import EXAMPLE_200, EXAMPLE_201, EXAMPLE_401, EXAMPLE_404, EXAMPLE_422
 
 from .models import CameraSource, CameraStatusLog
 from .serializers import CameraCreateSerializer, CameraSourceSerializer, CameraStatusLogSerializer, CameraStatusSerializer
@@ -28,7 +29,8 @@ class CameraListView(APIView):
             OpenApiParameter("name", OpenApiTypes.STR, description="名稱模糊搜尋"),
             OpenApiParameter("is_online", OpenApiTypes.BOOL, description="篩選連線狀態（true / false）"),
         ],
-        responses=CameraSourceSerializer(many=True),
+        responses={200: CameraSourceSerializer(many=True), 401: None},
+        examples=[EXAMPLE_401],
     )
     def get(self, request: Request) -> Response:
         qs = CameraSource.objects.filter(is_enabled=True).order_by("name")
@@ -58,7 +60,8 @@ class CameraCreateView(APIView):
             "web_port / rtsp_port 範圍為 1–65535。"
         ),
         request=CameraCreateSerializer,
-        responses={200: None, 201: None},
+        responses={200: None, 201: None, 401: None, 422: None},
+        examples=[EXAMPLE_200, EXAMPLE_201, EXAMPLE_401, EXAMPLE_422],
     )
     def post(self, request: Request) -> Response:
         device_id = request.data.get("device_id")
@@ -89,7 +92,8 @@ class CameraStatusView(APIView):
     @extend_schema(
         summary="查詢攝影機連線狀態",
         description="回傳指定攝影機的 is_online 與 last_checked_at，由 Celery Beat 每分鐘更新。",
-        responses={200: CameraStatusSerializer, 404: None},
+        responses={200: CameraStatusSerializer, 401: None, 404: None},
+        examples=[EXAMPLE_401, EXAMPLE_404],
     )
     def get(self, request: Request, device_id: str) -> Response:
         instance = CameraSource.objects.filter(device_id=device_id).first()
@@ -114,7 +118,8 @@ class CameraHistoryView(APIView):
             OpenApiParameter("page", OpenApiTypes.INT, description="頁碼（預設 1）"),
             OpenApiParameter("page_size", OpenApiTypes.INT, description=f"每頁筆數（預設 {DEFAULT_PAGE_SIZE}，最大 {MAX_PAGE_SIZE}）"),
         ],
-        responses={200: CameraStatusLogSerializer(many=True), 404: None},
+        responses={200: CameraStatusLogSerializer(many=True), 401: None, 404: None},
+        examples=[EXAMPLE_401, EXAMPLE_404],
     )
     def get(self, request: Request, device_id: str) -> Response:
         camera = CameraSource.objects.filter(device_id=device_id).first()
@@ -154,7 +159,8 @@ class CameraDetailView(APIView):
     @extend_schema(
         summary="取得單筆攝影機資料",
         description="依 device_id 查詢單筆攝影機設定。不包含 cctv_user / cctv_pass。",
-        responses={200: CameraSourceSerializer, 404: None},
+        responses={200: CameraSourceSerializer, 401: None, 404: None},
+        examples=[EXAMPLE_401, EXAMPLE_404],
     )
     def get(self, request: Request, device_id: str) -> Response:
         instance = self._get_instance(device_id)
@@ -168,7 +174,8 @@ class CameraDetailView(APIView):
     @extend_schema(
         summary="停用攝影機",
         description="依 device_id 將攝影機設為停用（is_enabled=False），資料保留不刪除。",
-        responses={200: None, 404: None},
+        responses={200: None, 401: None, 404: None},
+        examples=[EXAMPLE_200, EXAMPLE_401, EXAMPLE_404],
     )
     def delete(self, request: Request, device_id: str) -> Response:
         instance = self._get_instance(device_id)
